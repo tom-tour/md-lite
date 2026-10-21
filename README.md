@@ -89,7 +89,7 @@ If MD Lite is useful to you, you can support its development on [Ko-fi](https://
 
 ## Français
 
-Un lecteur et éditeur Markdown très léger pour Windows et Linux. Double-clique sur un fichier `.md` et il s'ouvre : aperçu mis en forme, texte brut, ou les deux côte à côte.
+Un lecteur et éditeur Markdown très léger pour Windows et Linux. Un double-clic sur un fichier `.md` l'ouvre : aperçu mis en forme, texte brut, ou les deux côte à côte.
 
 **⬇ Télécharger la dernière version : [Windows (md-lite.exe)](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe) · [Linux (md-lite-linux-x86_64.tar.gz)](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite-linux-x86_64.tar.gz)** (environ 1 Mo, sans installation)
 
@@ -102,33 +102,33 @@ Un lecteur et éditeur Markdown très léger pour Windows et Linux. Double-cliqu
 - **Images relatives au fichier** (`![](images/photo.png)`), chemins depuis la racine du dépôt git (`/docs/img.png`) et chemins absolus.
 - **Les liens vers d'autres `.md`** s'ouvrent dans un nouvel onglet.
 - **Sûr** : les scripts et le HTML dangereux des documents sont retirés, et une politique de sécurité bloque le reste.
-- **Respecte tes fichiers** : conserve l'encodage d'origine (UTF-8 avec ou sans BOM, UTF-16, Windows-1252) et les fins de ligne, écrit sans risque de fichier à moitié enregistré, détecte les modifications faites par d'autres programmes.
+- **Respecte les fichiers** : conserve l'encodage d'origine (UTF-8 avec ou sans BOM, UTF-16, Windows-1252) et les fins de ligne, écrit sans risque de fichier à moitié enregistré, détecte les modifications faites par d'autres programmes.
 - Rechercher et remplacer, zoom, impression et export PDF, thème clair / sombre / système, correcteur orthographique, tous les réglages au même endroit.
-- **Léger** : un seul exécutable d'environ 1 Mo. Il utilise le moteur web déjà présent sur ton système : WebView2 sous Windows 10/11, WebKitGTK sous Linux.
+- **Léger** : un seul exécutable d'environ 1 Mo. Il utilise le moteur web déjà présent sur le système : WebView2 sous Windows 10/11, WebKitGTK sous Linux.
 
 ### Installation
 
 #### Windows
 
-1. [Télécharge `md-lite.exe`](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe) (ou compile-le, voir plus bas) et place-le dans le dossier de ton choix.
-2. Lance-le une fois. Un bandeau propose d'en faire l'application par défaut pour les `.md` : clique sur **Définir par défaut**, puis choisis MD Lite dans la fenêtre de Windows.
-   Tu peux aussi lancer `md-lite.exe --install` pour l'enregistrer, et `md-lite.exe --uninstall` pour retirer l'enregistrement.
+1. [Télécharger `md-lite.exe`](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe) (ou le compiler, voir plus bas) et le placer dans n'importe quel dossier.
+2. Au premier lancement, un bandeau propose d'en faire l'application par défaut pour les `.md` : un clic sur **Définir par défaut** ouvre la fenêtre de Windows, où il suffit de choisir MD Lite.
+   `md-lite.exe --install` fait aussi l'enregistrement, et `md-lite.exe --uninstall` le retire.
 
-Si tu déplaces l'exécutable, l'association se met à jour toute seule au lancement suivant.
+Si l'exécutable est déplacé, l'association se met à jour toute seule au lancement suivant.
 
-L'exécutable n'est pas signé numériquement : au premier lancement, Windows SmartScreen peut afficher un avertissement. Clique sur **Informations complémentaires**, puis **Exécuter quand même**.
+L'exécutable n'est pas signé numériquement : au premier lancement, Windows SmartScreen peut afficher un avertissement. Il suffit alors de cliquer sur **Informations complémentaires**, puis **Exécuter quand même**.
 
 #### Linux
 
-1. [Télécharge `md-lite-linux-x86_64.tar.gz`](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite-linux-x86_64.tar.gz), extrais-le et place `md-lite` dans le dossier de ton choix (par exemple `~/.local/bin`).
+1. [Télécharger `md-lite-linux-x86_64.tar.gz`](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite-linux-x86_64.tar.gz), l'extraire et placer `md-lite` dans n'importe quel dossier (par exemple `~/.local/bin`).
 2. MD Lite a besoin de WebKitGTK 4.1 (version 2.40 ou plus récente), déjà présent sur la plupart des bureaux. Sinon :
    - Debian, Ubuntu, Mint : `sudo apt install libwebkit2gtk-4.1-0`
    - Fedora : `sudo dnf install webkit2gtk4.1`
    - Arch : `sudo pacman -S webkit2gtk-4.1`
-3. Lance `./md-lite` une fois. Un bandeau propose d'en faire l'application par défaut pour les `.md` : clique sur **Définir par défaut**. MD Lite apparaît aussi dans le menu des applications.
-   Tu peux aussi lancer `./md-lite --install` pour l'ajouter au menu, et `./md-lite --uninstall` pour l'en retirer.
+3. Au premier lancement de `./md-lite`, un bandeau propose d'en faire l'application par défaut pour les `.md` : un clic sur **Définir par défaut** suffit. MD Lite apparaît aussi dans le menu des applications.
+   `./md-lite --install` l'ajoute aussi au menu, et `./md-lite --uninstall` l'en retire.
 
-Fonctionne sur Ubuntu 22.04 ou plus récent et les autres distributions de la même époque. Si tu déplaces l'exécutable, l'entrée du menu se met à jour toute seule au lancement suivant.
+Fonctionne sur Ubuntu 22.04 ou plus récent et les autres distributions de la même époque. Si l'exécutable est déplacé, l'entrée du menu se met à jour toute seule au lancement suivant.
 
 ### Raccourcis
 
@@ -149,14 +149,14 @@ Fonctionne sur Ubuntu 22.04 ou plus récent et les autres distributions de la m�
 
 Prérequis : [Rust](https://rustup.rs).
 
-- **Windows** : la chaîne MSVC et les Build Tools de Visual Studio. Lance `build.cmd` : il compile la version optimisée et copie `md-lite.exe` à côté de lui.
+- **Windows** : la chaîne MSVC et les Build Tools de Visual Studio. Le script `build.cmd` compile la version optimisée et copie `md-lite.exe` à côté de lui.
 - **Linux** : les paquets de développement de WebKitGTK et GTK (Debian/Ubuntu : `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev`), puis `cargo build --release`. L'exécutable est `target/release/md-lite`.
 
 Chaque version est compilée et testée automatiquement par GitHub Actions sur les deux systèmes. L'éditeur lui-même est `md-lite.html` (intégré à l'exécutable à la compilation). Il fonctionne aussi seul dans un navigateur, avec moins de fonctions.
 
 ### Soutien
 
-Si MD Lite te rend service, tu peux soutenir son développement sur [Ko-fi](https://ko-fi.com/tom_t).
+Si MD Lite rend service, un soutien sur [Ko-fi](https://ko-fi.com/tom_t) m'aide à continuer à le développer.
 
 ### Licence
 
