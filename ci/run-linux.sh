@@ -8,6 +8,7 @@ CI=$(dirname "$(realpath "$0")")
 mkdir -p "$SHOTS"
 
 export HOME=$(mktemp -d) XDG_RUNTIME_DIR=$(mktemp -d)
+export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share
 export MDLITE_SELFTEST=$(mktemp -d)
 cp "$CI/selftest.js" "$MDLITE_SELFTEST/"
 WORK=$(mktemp -d)
