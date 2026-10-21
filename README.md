@@ -49,7 +49,7 @@ The executable is not code-signed, so Windows SmartScreen may warn you the first
 3. Run `./md-lite` once. A banner offers to make MD Lite the default app for `.md` files: click **Définir par défaut** (set as default). MD Lite also appears in your applications menu.
    You can also run `./md-lite --install` to add it to the menu, and `./md-lite --uninstall` to remove it.
 
-Works on Ubuntu 22.04 or later and other distributions of the same age, with X11 or Wayland. If you move the executable, the menu entry updates itself the next time you start it.
+Works on Ubuntu 22.04 or later and other distributions of the same age. If you move the executable, the menu entry updates itself the next time you start it.
 
 The interface is in French for now.
 
@@ -128,7 +128,7 @@ L'exécutable n'est pas signé numériquement : au premier lancement, Windows Sm
 3. Lance `./md-lite` une fois. Un bandeau propose d'en faire l'application par défaut pour les `.md` : clique sur **Définir par défaut**. MD Lite apparaît aussi dans le menu des applications.
    Tu peux aussi lancer `./md-lite --install` pour l'ajouter au menu, et `./md-lite --uninstall` pour l'en retirer.
 
-Fonctionne sur Ubuntu 22.04 ou plus récent et les autres distributions de la même époque, sous X11 comme sous Wayland. Si tu déplaces l'exécutable, l'entrée du menu se met à jour toute seule au lancement suivant.
+Fonctionne sur Ubuntu 22.04 ou plus récent et les autres distributions de la même époque. Si tu déplaces l'exécutable, l'entrée du menu se met à jour toute seule au lancement suivant.
 
 ### Raccourcis
 
