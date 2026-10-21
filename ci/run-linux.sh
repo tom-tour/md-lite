@@ -24,14 +24,6 @@ escape() { W=$(xdotool search --onlyvisible --name . | sort -n | tail -1); xdoto
 wait_for() { for _ in $(seq 300); do [ -e "$MDLITE_SELFTEST/$1.out" ] && return 0; sleep 0.1; done; echo "délai dépassé : $1"; return 1; }
 fail() { echo "ÉCHEC : $*"; shot echec; cat "$MDLITE_SELFTEST/result.out" 2>/dev/null; kill "$PID" 2>/dev/null; exit 1; }
 
-# Installation : fichier .desktop et icône.
-"$BIN" --install --quiet || fail "--install"
-DESKTOP=$HOME/.local/share/applications/md-lite.desktop
-desktop-file-validate "$DESKTOP" || fail ".desktop invalide"
-grep -qx "Exec=\"$BIN\" %F" "$DESKTOP" || fail "ligne Exec"
-[ -s "$HOME/.local/share/icons/hicolor/256x256/apps/md-lite.png" ] || fail "icône"
-echo "ok   installation .desktop"
-
 dbus-run-session -- "$BIN" "$WORK/test.md" > "$SHOTS/stdout.txt" 2>&1 &
 PID=$!
 
@@ -59,4 +51,14 @@ grep -q 'Ligne ajoutée par le test.' "$WORK/test.md" || fail "texte non enregis
 grep -q 'test.md' "$HOME/.config/md-lite/session.json" || fail "session non enregistrée"
 [ "$(xdg-mime query default text/markdown)" = md-lite.desktop ] || fail "association .md"
 echo "ok   fichier enregistré, session sauvée, fermeture propre"
+
+# Installation en ligne de commande : fichier .desktop et icône (déjà créés par « Définir par défaut »).
+"$BIN" --install --quiet || fail "--install"
+DESKTOP=$HOME/.local/share/applications/md-lite.desktop
+desktop-file-validate "$DESKTOP" || fail ".desktop invalide"
+grep -qx "Exec=\"$BIN\" %F" "$DESKTOP" || fail "ligne Exec"
+[ -s "$HOME/.local/share/icons/hicolor/256x256/apps/md-lite.png" ] || fail "icône"
+echo "ok   installation .desktop"
+"$BIN" --uninstall --quiet && [ ! -e "$DESKTOP" ] || fail "--uninstall"
+echo "ok   désinstallation"
 echo "TOUS LES TESTS SONT PASSÉS"
