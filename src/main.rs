@@ -68,7 +68,7 @@ fn main() {
     let flag = |f: &str| args.iter().any(|a| a == f);
     let quiet = flag("--quiet");
     if flag("--install") {
-        return report(platform::install(), quiet, "MD Lite est installé. Ouvre MD Lite et clique sur « Définir par défaut » pour l'utiliser avec les fichiers .md.");
+        return report(platform::install(), quiet, "MD Lite est installé. Pour l'utiliser avec les fichiers .md : ouvrir MD Lite, puis cliquer sur « Définir par défaut ».");
     }
     if flag("--uninstall") {
         return report(platform::uninstall(), quiet, "MD Lite est désinstallé.");

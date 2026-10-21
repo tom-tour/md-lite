@@ -186,7 +186,7 @@ footer.status .spacer{flex-shrink:1}
   <span id="stats"></span><span id="path"></span><span class="spacer"></span>
   <button id="zoom" title="Zoom (Ctrl+molette, Ctrl+0 pour réinitialiser)"></button>
 </footer>
-<div id="tpick" hidden><div id="tgrid"></div><div id="tlabel">Choisis la taille</div></div>
+<div id="tpick" hidden><div id="tgrid"></div><div id="tlabel">Choisir la taille</div></div>
 <input type="file" id="file" accept=".md,.markdown,.txt,text/markdown" multiple hidden>
 
 <dialog id="settings">
@@ -233,7 +233,7 @@ footer.status .spacer{flex-shrink:1}
 <script type="text/markdown" id="welcome"># Bienvenue dans MD Lite
 
 Un éditeur **Markdown** très léger : texte brut à gauche, *aperçu* à droite.
-Change de vue avec les boutons **Texte / Les deux / Aperçu** (Alt+1, 2, 3).
+Les boutons **Texte / Les deux / Aperçu** changent la vue (Alt+1, 2, 3).
 Les fichiers s'ouvrent en mode Aperçu ; tout se règle dans les **paramètres** (⚙ ou Ctrl+,).
 
 ## Ce qui est pris en charge
@@ -244,7 +244,7 @@ Les fichiers s'ouvrent en mode Aperçu ; tout se règle dans les **paramètres**
 - listes à puces, numérotées et imbriquées
   1. premier
   2. second
-- [x] listes de tâches (clique sur les cases dans l'aperçu)
+- [x] listes de tâches (cases cliquables dans l'aperçu)
 - [ ] encore à faire
 
 > Les citations aussi,
@@ -292,10 +292,10 @@ Langages : JavaScript, TypeScript, JSON, Python, Rust, C, C++, C#, Java, Kotlin,
 
 ---
 
-Sélectionne du texte puis clique sur un bouton de la barre pour le mettre en forme. Clique à nouveau pour enlever la mise en forme.
+Sélectionner du texte puis cliquer sur un bouton de la barre pour le mettre en forme. Un nouveau clic enlève la mise en forme.
 Un lien vers un autre fichier `.md` l'ouvre dans un nouvel onglet ; un clic du milieu ferme un onglet.
 
-[^1]: Comme celle-ci. Clique sur ↩ pour revenir au texte.
+[^1]: Comme celle-ci. Un clic sur ↩ ramène au texte.
 </script>
 
 <script>
@@ -955,7 +955,7 @@ async function checkExternal(){
   const t=T;checking=true;
   try{
     if(await (await fetch('/api/changed?doc='+t.id)).text()!=='1')return;
-    if(!t.dirty||confirm('« '+t.name+' » a été modifié par un autre programme.\n\nRecharger le fichier ? (tes modifications ici seront perdues)')){
+    if(!t.dirty||confirm('« '+t.name+' » a été modifié par un autre programme.\n\nRecharger le fichier ? (les modifications faites ici seront perdues)')){
       const s=t.ta.selectionStart,top=t.ta.scrollTop,vtop=view.scrollTop;
       await loadResp(t,await docApi('/api/open?path='+encodeURIComponent(t.fpath),{method:'POST'},t));
       t.ta.setSelectionRange(Math.min(s,t.ta.value.length),Math.min(s,t.ta.value.length));t.ta.scrollTop=top;view.scrollTop=vtop;
