@@ -48,7 +48,7 @@ wait "$PID"; CODE=$?
 [ "$CODE" = 0 ] || fail "code de sortie $CODE"
 grep -q '^FAIL' "$MDLITE_SELFTEST/result.out" && fail "vérifications"
 grep -q 'Ligne ajoutée par le test.' "$WORK/test.md" || fail "texte non enregistré dans le fichier"
-grep -q 'test.md' "$HOME/.config/md-lite/session.json" || fail "session non enregistrée"
+grep -q 'test.md' "$HOME/.config/md-lite/session.json" || { ls -la "$HOME/.config/md-lite"; cat "$HOME/.config/md-lite/"*.json; fail "session non enregistrée"; }
 [ "$(xdg-mime query default text/markdown)" = md-lite.desktop ] || fail "association .md"
 echo "ok   fichier enregistré, session sauvée, fermeture propre"
 
