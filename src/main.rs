@@ -1,8 +1,9 @@
-// MD Lite : lecteur et éditeur Markdown léger pour Windows.
-// Une fenêtre native avec WebView2 affiche l'éditeur (md-lite.html, embarqué dans l'exe).
-// La page parle au programme via le protocole interne https://mdlite.localhost/ :
-// lecture et écriture des fichiers (un état par onglet), boîtes de dialogue Windows,
+// MD Lite : lecteur et éditeur Markdown léger pour Windows et Linux.
+// Une fenêtre native avec un moteur web (WebView2 sous Windows, WebKitGTK sous Linux) affiche
+// l'éditeur (md-lite.html, embarqué dans l'exécutable). La page parle au programme via un
+// protocole interne : lecture et écriture des fichiers (un état par onglet), boîtes de dialogue,
 // images relatives, paramètres, association des fichiers .md.
+// Ce qui dépend du système est dans windows.rs et linux.rs.
 
 #![windows_subsystem = "windows"]
 
@@ -13,45 +14,27 @@ use std::ffi::OsString;
 use std::fs;
 use std::hash::{BuildHasher, Hasher};
 use std::io;
-use std::num::NonZeroIsize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle,
-};
-use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
+use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use serde_json::{json, Value};
 use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
-use tao::platform::windows::{IconExtWindows, WindowBuilderExtWindows, WindowExtWindows};
-use tao::window::{Icon, Theme, Window, WindowBuilder};
-use windows_sys::core::BOOL;
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::System::DataExchange::COPYDATASTRUCT;
-use windows_sys::Win32::UI::Shell::{
-    DefSubclassProc, SHChangeNotify, SHOpenWithDialog, SetWindowSubclass, ShellExecuteW, OAIF_ALLOW_REGISTRATION,
-    OAIF_REGISTER_EXT, OPENASINFO, SHCNE_ASSOCCHANGED, SHCNF_IDLIST,
-};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetPropW, IsIconic, SendMessageW, SetForegroundWindow, SetPropW, ShowWindow, SW_RESTORE,
-    SW_SHOWNORMAL, WM_COPYDATA,
-};
-use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE, REG_NONE};
-use winreg::{RegKey, RegValue};
+use tao::window::{Theme, Window, WindowBuilder};
 use wry::http::{header, Request, Response};
-use wry::{DragDropEvent, NewWindowResponse, WebContext, WebViewBuilder, WebViewBuilderExtWindows};
+use wry::{DragDropEvent, NewWindowResponse, WebContext, WebViewBuilder};
+
+#[cfg_attr(windows, path = "windows.rs")]
+#[cfg_attr(target_os = "linux", path = "linux.rs")]
+mod platform;
 
 const PAGE: &str = include_str!("../md-lite.html");
-const ORIGIN: &str = "https://mdlite.localhost";
-const PROG_ID: &str = "MDLite.Markdown";
-const EXTS: [&str; 2] = [".md", ".markdown"];
-// Marque posée sur nos fenêtres pour qu'un second lancement les retrouve.
-const WINDOW_PROP: &str = "MDLite.Window";
-const COPY_ID: usize = 0x4D_444C;
+#[cfg_attr(windows, allow(dead_code))] // sous Windows, l'icône vient des ressources de l'exe
+const ICON_PNG: &[u8] = include_bytes!("../icons/icon.png");
 
 type Res = Response<Cow<'static, [u8]>>;
 type Docs = Mutex<HashMap<String, Doc>>;
@@ -73,26 +56,24 @@ struct Doc {
     mtime: Option<SystemTime>,
 }
 
-enum UserEvent {
+pub enum UserEvent {
     Title(String),
     Open(Vec<PathBuf>),
     Theme(Option<Theme>),
     Close,
 }
 
-static PROXY: OnceLock<Mutex<EventLoopProxy<UserEvent>>> = OnceLock::new();
-
 fn main() {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let flag = |f: &str| args.iter().any(|a| a == f);
     let quiet = flag("--quiet");
     if flag("--install") {
-        return report(install(), quiet, "MD Lite est installé. Ouvre MD Lite et clique sur « Définir par défaut », ou passe par clic droit sur un .md > Ouvrir avec.");
+        return report(platform::install(), quiet, "MD Lite est installé. Ouvre MD Lite et clique sur « Définir par défaut » pour l'utiliser avec les fichiers .md.");
     }
     if flag("--uninstall") {
-        return report(uninstall(), quiet, "MD Lite est désinstallé.");
+        return report(platform::uninstall(), quiet, "MD Lite est désinstallé.");
     }
-    heal_registration();
+    platform::heal_registration();
     let files: Vec<PathBuf> = args
         .iter()
         .filter(|a| !a.to_string_lossy().starts_with("--"))
@@ -100,7 +81,7 @@ fn main() {
         .collect();
     let fresh = flag("--new");
     let in_window = settings()["openIn"].as_str() == Some("window");
-    if !files.is_empty() && !fresh && !in_window && hand_off(&files) {
+    if !files.is_empty() && !fresh && !in_window && platform::hand_off(&files) {
         return;
     }
     run(files, fresh);
@@ -109,46 +90,37 @@ fn main() {
 fn run(files: Vec<PathBuf>, fresh: bool) {
     let docs: Arc<Docs> = Arc::new(Mutex::new(HashMap::new()));
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
-    let _ = PROXY.set(Mutex::new(event_loop.create_proxy()));
     let theme = theme_setting();
-    let dark = theme.map(|t| t == Theme::Dark).unwrap_or_else(is_dark);
+    let dark = theme.map(|t| t == Theme::Dark).unwrap_or_else(platform::is_dark);
     let (size, maximized) = load_window_state();
-    let window = WindowBuilder::new()
+    let builder = WindowBuilder::new()
         .with_title("MD Lite")
         .with_inner_size(size)
         .with_maximized(maximized)
-        .with_theme(Some(if dark { Theme::Dark } else { Theme::Light }))
-        .with_window_icon(Icon::from_resource(1, None).ok())
-        .with_taskbar_icon(Icon::from_resource(1, None).ok())
-        .build(&event_loop)
-        .expect("création de la fenêtre");
-    let hwnd = window.hwnd();
-    unsafe {
-        let prop = wide(WINDOW_PROP);
-        SetPropW(hwnd as HWND, prop.as_ptr(), 1 as _);
-        SetWindowSubclass(hwnd as HWND, Some(subclass), 1, 0);
-    }
+        .with_theme(Some(if dark { Theme::Dark } else { Theme::Light }));
+    let window = platform::window_builder(builder).build(&event_loop).expect("création de la fenêtre");
+    platform::attach(&window, event_loop.create_proxy());
+    let win = platform::window_id(&window);
     let nonce = make_nonce();
     let startup = Arc::new(json!({
         "files": files.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>(),
         "fresh": fresh,
+        "os": std::env::consts::OS,
     }));
 
-    let mut context = WebContext::new(Some(app_dir().join("WebView2")));
+    let mut context = WebContext::new(Some(platform::app_dir().join("webview")));
     let api_proxy = event_loop.create_proxy();
     let drop_proxy = event_loop.create_proxy();
     let title_proxy = event_loop.create_proxy();
     let dragging = Cell::new(false);
-    let built = WebViewBuilder::new_with_web_context(&mut context)
-        .with_url(format!("{ORIGIN}/"))
-        .with_https_scheme(true)
-        .with_browser_accelerator_keys(false)
+    let builder = WebViewBuilder::new_with_web_context(&mut context)
+        .with_url(format!("{}/", platform::ORIGIN))
         .with_devtools(cfg!(debug_assertions))
         .with_background_color(if dark { (13, 17, 23, 255) } else { (255, 255, 255, 255) })
         .with_asynchronous_custom_protocol("mdlite".into(), move |_id, req, responder| {
             let (docs, proxy, nonce, startup) = (docs.clone(), api_proxy.clone(), nonce.clone(), startup.clone());
             std::thread::spawn(move || {
-                let ctx = Ctx { docs: &docs, hwnd, proxy: &proxy, nonce: &nonce, startup: &startup };
+                let ctx = Ctx { docs: &docs, win, proxy: &proxy, nonce: &nonce, startup: &startup };
                 responder.respond(route(req, &ctx).unwrap_or_else(|e| text(500, &e.to_string())))
             });
         })
@@ -176,22 +148,19 @@ fn run(files: Vec<PathBuf>, fresh: bool) {
             NewWindowResponse::Deny
         })
         .with_navigation_handler(|url| {
-            if url.starts_with(ORIGIN) {
+            if url.starts_with(platform::ORIGIN) {
                 return true;
             }
             open_url(&url);
             false
-        })
-        .build(&window);
-    let webview = match built {
+        });
+    let webview = match platform::build_webview(builder, &window) {
         Ok(w) => w,
         Err(e) => {
             MessageDialog::new()
                 .set_title("MD Lite")
                 .set_level(MessageLevel::Error)
-                .set_description(format!(
-                    "Impossible d'afficher l'éditeur : {e}\n\nMD Lite a besoin du runtime Microsoft WebView2 (fourni avec Windows 10/11 à jour) : https://developer.microsoft.com/microsoft-edge/webview2/"
-                ))
+                .set_description(format!("Impossible d'afficher l'éditeur : {e}\n\n{}", platform::ENGINE_HELP))
                 .show();
             return;
         }
@@ -220,13 +189,16 @@ fn run(files: Vec<PathBuf>, fresh: bool) {
             Event::UserEvent(UserEvent::Open(paths)) => {
                 let list: Vec<String> = paths.iter().map(|p| js_string(&p.to_string_lossy())).collect();
                 let _ = webview.evaluate_script(&format!("window.__mdlite && __mdlite.openPaths([{}])", list.join(",")));
+                window.set_minimized(false);
+                window.set_focus();
             }
             Event::UserEvent(UserEvent::Theme(t)) => {
-                let dark = t.map(|t| t == Theme::Dark).unwrap_or_else(is_dark);
+                let dark = t.map(|t| t == Theme::Dark).unwrap_or_else(platform::is_dark);
                 window.set_theme(Some(if dark { Theme::Dark } else { Theme::Light }));
             }
             Event::UserEvent(UserEvent::Close) => {
                 save_window_state(&window);
+                platform::detach();
                 *flow = ControlFlow::Exit;
             }
             _ => {}
@@ -234,56 +206,11 @@ fn run(files: Vec<PathBuf>, fresh: bool) {
     });
 }
 
-// ---------- Instance unique ----------
-
-// Reçoit les fichiers envoyés par un second lancement de MD Lite (double-clic dans l'Explorateur).
-unsafe extern "system" fn subclass(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _id: usize, _data: usize) -> LRESULT {
-    if msg == WM_COPYDATA {
-        let cds = unsafe { &*(lp as *const COPYDATASTRUCT) };
-        if cds.dwData == COPY_ID && !cds.lpData.is_null() {
-            let units = unsafe { std::slice::from_raw_parts(cds.lpData as *const u16, cds.cbData as usize / 2) };
-            let paths = String::from_utf16_lossy(units).split('\n').filter(|s| !s.is_empty()).map(PathBuf::from).collect();
-            if let Some(p) = PROXY.get() {
-                let _ = p.lock().unwrap().send_event(UserEvent::Open(paths));
-            }
-            return 1;
-        }
-    }
-    unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
-}
-
-// Confie les fichiers à une fenêtre MD Lite déjà ouverte (la plus récemment utilisée).
-fn hand_off(files: &[PathBuf]) -> bool {
-    unsafe extern "system" fn find(h: HWND, out: LPARAM) -> BOOL {
-        let prop = wide(WINDOW_PROP);
-        if unsafe { !GetPropW(h, prop.as_ptr()).is_null() } {
-            unsafe { *(out as *mut HWND) = h };
-            return 0;
-        }
-        1
-    }
-    let mut target: HWND = std::ptr::null_mut();
-    unsafe { EnumWindows(Some(find), &mut target as *mut HWND as LPARAM) };
-    if target.is_null() {
-        return false;
-    }
-    let list: Vec<String> = files.iter().map(|p| p.to_string_lossy().into_owned()).collect();
-    let data: Vec<u16> = list.join("\n").encode_utf16().collect();
-    let cds = COPYDATASTRUCT { dwData: COPY_ID, cbData: (data.len() * 2) as u32, lpData: data.as_ptr() as *mut _ };
-    unsafe {
-        if IsIconic(target) != 0 {
-            ShowWindow(target, SW_RESTORE);
-        }
-        SetForegroundWindow(target);
-        SendMessageW(target, WM_COPYDATA, 0, &cds as *const COPYDATASTRUCT as LPARAM) != 0
-    }
-}
-
 // ---------- Protocole interne ----------
 
 struct Ctx<'a> {
     docs: &'a Docs,
-    hwnd: isize,
+    win: isize,
     proxy: &'a EventLoopProxy<UserEvent>,
     nonce: &'a str,
     startup: &'a Value,
@@ -317,9 +244,9 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
             if key != "settings" && key != "session" {
                 return Ok(empty(400));
             }
-            let file = app_dir().join(format!("{key}.json"));
+            let file = platform::app_dir().join(format!("{key}.json"));
             if put {
-                fs::create_dir_all(app_dir())?;
+                fs::create_dir_all(platform::app_dir())?;
                 fs::write(file, body())?;
                 return Ok(empty(204));
             }
@@ -351,7 +278,7 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
             Ok(doc_response(d, t))
         }
         "/api/pick" => {
-            let mut dlg = md_filters(FileDialog::new()).set_parent(&Parent(c.hwnd));
+            let mut dlg = md_filters(platform::file_dialog(c.win));
             if let Some(dir) = doc_dir(c.docs, &id) {
                 dlg = dlg.set_directory(dir);
             }
@@ -370,7 +297,7 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
         }
         "/api/saveas" => {
             let name = q("name").filter(|n| !n.is_empty()).unwrap_or_else(|| "sans-titre.md".into());
-            let mut dlg = md_filters(FileDialog::new()).set_file_name(name).set_parent(&Parent(c.hwnd));
+            let mut dlg = md_filters(platform::file_dialog(c.win)).set_file_name(name);
             if let Some(dir) = doc_dir(c.docs, &id) {
                 dlg = dlg.set_directory(dir);
             }
@@ -403,7 +330,7 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
         }
         "/api/confirmclose" => {
             let name = q("name").unwrap_or_default();
-            let res = MessageDialog::new()
+            let res = platform::message_dialog(c.win)
                 .set_title("MD Lite")
                 .set_level(MessageLevel::Warning)
                 .set_description(format!("Enregistrer les modifications de « {name} » ?"))
@@ -412,7 +339,6 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
                     "Ne pas enregistrer".into(),
                     "Annuler".into(),
                 ))
-                .set_parent(&Parent(c.hwnd))
                 .show();
             let answer = match res {
                 MessageDialogResult::Yes => "yes",
@@ -428,7 +354,9 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
             Ok(empty(204))
         }
         "/api/launch" => {
-            spawn_window();
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = Command::new(exe).arg("--new").spawn();
+            }
             Ok(empty(204))
         }
         "/api/resolve" => match q("rel").and_then(|r| resolve(c.docs, &id, &r)) {
@@ -441,11 +369,10 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
             }
             Ok(empty(204))
         }
-        "/api/default" => Ok(text(200, if is_default() { "1" } else { "0" })),
+        "/api/default" => Ok(text(200, if platform::is_default() { "1" } else { "0" })),
         "/api/makedefault" => {
-            install()?;
-            open_with_dialog(c.hwnd);
-            Ok(text(200, if is_default() { "1" } else { "0" }))
+            platform::make_default(c.win)?;
+            Ok(text(200, if platform::is_default() { "1" } else { "0" }))
         }
         _ => Ok(empty(404)),
     }
@@ -518,13 +445,13 @@ fn serve(path: Option<PathBuf>) -> Res {
 
 // Résout un lien du document : relatif au dossier du fichier, "/..." relatif à la racine du dépôt git.
 fn resolve(docs: &Docs, id: &str, rel: &str) -> Option<PathBuf> {
+    // La page marque les chemins absolus (liens file:// ou C:\...) avec "file:".
+    if let Some(abs) = rel.strip_prefix("file:") {
+        return Some(PathBuf::from(abs));
+    }
     let rel = rel.split(['?', '#']).next().unwrap_or("");
     if rel.is_empty() {
         return None;
-    }
-    let p = Path::new(rel);
-    if p.is_absolute() {
-        return Some(p.to_path_buf());
     }
     let dir = doc_dir(docs, id)?;
     if let Some(r) = rel.strip_prefix('/') {
@@ -538,8 +465,33 @@ fn doc_dir(docs: &Docs, id: &str) -> Option<PathBuf> {
     docs.lock().unwrap().get(id)?.path.as_ref()?.parent().map(Path::to_path_buf)
 }
 
-fn md_filters(d: FileDialog) -> FileDialog {
+fn md_filters(d: rfd::FileDialog) -> rfd::FileDialog {
     d.add_filter("Markdown", &["md", "markdown"]).add_filter("Texte", &["txt"]).add_filter("Tous les fichiers", &["*"])
+}
+
+// Liens web uniquement : jamais de schéma exotique lancé depuis un document.
+fn open_url(url: &str) {
+    let l = url.to_ascii_lowercase();
+    if l.starts_with("http://") || l.starts_with("https://") || l.starts_with("mailto:") {
+        platform::shell_open(url);
+    }
+}
+
+// Ouvre un fichier lié avec son application ; un exécutable est seulement montré dans le gestionnaire de fichiers.
+fn reveal(p: &Path) {
+    const RISKY: [&str; 20] = [
+        "exe", "bat", "cmd", "com", "scr", "pif", "ps1", "vbs", "vbe", "js", "jse", "wsf", "msi", "hta", "lnk", "reg",
+        "sh", "desktop", "appimage", "run",
+    ];
+    if !p.exists() {
+        return;
+    }
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if p.is_file() && (RISKY.contains(&ext.as_str()) || platform::is_executable(p)) {
+        platform::show_in_folder(p);
+    } else {
+        platform::shell_open(&p.to_string_lossy());
+    }
 }
 
 // ---------- Lecture / écriture ----------
@@ -587,6 +539,10 @@ fn write_doc(d: &mut Doc, text: &str) -> io::Result<()> {
     let name = path.file_name().unwrap().to_string_lossy();
     let tmp = path.with_file_name(format!("{name}.mdlite-tmp"));
     fs::write(&tmp, &bytes)?;
+    // Garde les droits du fichier d'origine (important sous Linux).
+    if let Ok(meta) = fs::metadata(&path) {
+        let _ = fs::set_permissions(&tmp, meta.permissions());
+    }
     if let Err(e) = fs::rename(&tmp, &path) {
         let _ = fs::remove_file(&tmp);
         return Err(e);
@@ -614,70 +570,10 @@ fn to_cp1252(c: char) -> Option<u8> {
     CP1252.iter().position(|&x| x == c).map(|i| 0x80 + i as u8)
 }
 
-// ---------- Windows ----------
-
-struct Parent(isize);
-
-impl HasWindowHandle for Parent {
-    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-        let h = Win32WindowHandle::new(NonZeroIsize::new(self.0).ok_or(HandleError::Unavailable)?);
-        Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(h)) })
-    }
-}
-
-impl HasDisplayHandle for Parent {
-    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
-        Ok(DisplayHandle::windows())
-    }
-}
-
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(Some(0)).collect()
-}
-
-fn shell_open(target: &str) {
-    let (op, file) = (wide("open"), wide(target));
-    unsafe {
-        ShellExecuteW(std::ptr::null_mut(), op.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL);
-    }
-}
-
-// Liens web uniquement : jamais de schéma exotique lancé depuis un document.
-fn open_url(url: &str) {
-    let l = url.to_ascii_lowercase();
-    if l.starts_with("http://") || l.starts_with("https://") || l.starts_with("mailto:") {
-        shell_open(url);
-    }
-}
-
-// Ouvre un fichier lié avec son application ; un exécutable est seulement montré dans l'Explorateur.
-fn reveal(p: &Path) {
-    const RISKY: [&str; 16] =
-        ["exe", "bat", "cmd", "com", "scr", "pif", "ps1", "vbs", "vbe", "js", "jse", "wsf", "msi", "hta", "lnk", "reg"];
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    if !p.exists() {
-        return;
-    }
-    if p.is_file() && RISKY.contains(&ext.as_str()) {
-        let _ = Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
-    } else {
-        shell_open(&p.to_string_lossy());
-    }
-}
-
-fn spawn_window() {
-    if let Ok(exe) = std::env::current_exe() {
-        let _ = Command::new(exe).arg("--new").spawn();
-    }
-}
-
-fn app_dir() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    base.join("MDLite")
-}
+// ---------- Paramètres et fenêtre ----------
 
 fn settings() -> Value {
-    fs::read_to_string(app_dir().join("settings.json"))
+    fs::read_to_string(platform::app_dir().join("settings.json"))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(Value::Null)
@@ -692,7 +588,7 @@ fn theme_setting() -> Option<Theme> {
 }
 
 fn load_window_state() -> (LogicalSize<f64>, bool) {
-    let s = fs::read_to_string(app_dir().join("window.txt")).unwrap_or_default();
+    let s = fs::read_to_string(platform::app_dir().join("window.txt")).unwrap_or_default();
     let v: Vec<f64> = s.split_whitespace().filter_map(|x| x.parse().ok()).collect();
     match v.as_slice() {
         [w, h, m] if *w >= 400.0 && *h >= 300.0 => (LogicalSize::new(*w, *h), *m == 1.0),
@@ -706,107 +602,9 @@ fn save_window_state(w: &Window) {
     if !max && !w.is_minimized() {
         size = w.inner_size().to_logical(w.scale_factor());
     }
-    let _ = fs::create_dir_all(app_dir());
-    let _ = fs::write(app_dir().join("window.txt"), format!("{} {} {}", size.width.round(), size.height.round(), max as u8));
-}
-
-fn is_dark() -> bool {
-    RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-        .and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme"))
-        .map(|v| v == 0)
-        .unwrap_or(false)
-}
-
-// ---------- Association des fichiers .md ----------
-
-fn open_command() -> io::Result<String> {
-    Ok(format!("\"{}\" \"%1\"", std::env::current_exe()?.display()))
-}
-
-fn install() -> io::Result<()> {
-    let exe = std::env::current_exe()?;
-    let exe_name = exe.file_name().unwrap().to_string_lossy().into_owned();
-    let open = open_command()?;
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let set = |path: &str, name: &str, val: &str| -> io::Result<()> { hkcu.create_subkey(path)?.0.set_value(name, &val) };
-    let cls = format!(r"Software\Classes\{PROG_ID}");
-    let app = format!(r"Software\Classes\Applications\{exe_name}");
-    set(&cls, "", "Document Markdown")?;
-    set(&format!(r"{cls}\DefaultIcon"), "", &format!("\"{}\",0", exe.display()))?;
-    set(&format!(r"{cls}\shell\open\command"), "", &open)?;
-    set(&app, "FriendlyAppName", "MD Lite")?;
-    set(&format!(r"{app}\shell\open\command"), "", &open)?;
-    for e in EXTS {
-        set(&format!(r"{app}\SupportedTypes"), e, "")?;
-        set(r"Software\MDLite\Capabilities\FileAssociations", e, PROG_ID)?;
-        hkcu.create_subkey(format!(r"Software\Classes\{e}\OpenWithProgids"))?
-            .0
-            .set_raw_value(PROG_ID, &RegValue { bytes: Cow::Borrowed(&[]), vtype: REG_NONE })?;
-    }
-    set(r"Software\MDLite\Capabilities", "ApplicationName", "MD Lite")?;
-    set(r"Software\MDLite\Capabilities", "ApplicationDescription", "Lecteur et éditeur Markdown léger")?;
-    set(r"Software\RegisteredApplications", "MD Lite", r"Software\MDLite\Capabilities")?;
-    notify_assoc();
-    Ok(())
-}
-
-fn uninstall() -> io::Result<()> {
-    let exe = std::env::current_exe()?;
-    let exe_name = exe.file_name().unwrap().to_string_lossy().into_owned();
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let _ = hkcu.delete_subkey_all(format!(r"Software\Classes\{PROG_ID}"));
-    let _ = hkcu.delete_subkey_all(format!(r"Software\Classes\Applications\{exe_name}"));
-    let _ = hkcu.delete_subkey_all(r"Software\MDLite");
-    for e in EXTS {
-        if let Ok(k) = hkcu.open_subkey_with_flags(format!(r"Software\Classes\{e}\OpenWithProgids"), KEY_SET_VALUE) {
-            let _ = k.delete_value(PROG_ID);
-        }
-    }
-    if let Ok(k) = hkcu.open_subkey_with_flags(r"Software\RegisteredApplications", KEY_SET_VALUE) {
-        let _ = k.delete_value("MD Lite");
-    }
-    notify_assoc();
-    Ok(())
-}
-
-// Si le dossier de MD Lite a été déplacé, l'association est remise à jour toute seule.
-fn heal_registration() {
-    let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey(format!(r"Software\Classes\{PROG_ID}\shell\open\command"));
-    if let (Ok(k), Ok(cmd)) = (key, open_command()) {
-        if k.get_value::<String, _>("").map(|v| v != cmd).unwrap_or(true) {
-            let _ = install();
-        }
-    }
-}
-
-fn is_default() -> bool {
-    RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.md\UserChoice")
-        .and_then(|k| k.get_value::<String, _>("ProgId"))
-        .map(|p| p == PROG_ID || p.to_ascii_lowercase().contains("md-lite.exe"))
-        .unwrap_or(false)
-}
-
-// Windows interdit à une application de se déclarer seule par défaut : on ouvre la fenêtre « Ouvrir avec » du système.
-fn open_with_dialog(hwnd: isize) {
-    let dir = app_dir();
+    let dir = platform::app_dir();
     let _ = fs::create_dir_all(&dir);
-    let sample = dir.join("exemple.md");
-    let _ = fs::write(&sample, "# MD Lite\n");
-    let file = wide(&sample.to_string_lossy());
-    let info = OPENASINFO {
-        pcszFile: file.as_ptr(),
-        pcszClass: std::ptr::null(),
-        oaifInFlags: OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT,
-    };
-    unsafe {
-        SHOpenWithDialog(hwnd as _, &info);
-    }
-}
-
-fn notify_assoc() {
-    unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED as _, SHCNF_IDLIST, std::ptr::null(), std::ptr::null()) }
+    let _ = fs::write(dir.join("window.txt"), format!("{} {} {}", size.width.round(), size.height.round(), max as u8));
 }
 
 fn report(r: io::Result<()>, quiet: bool, ok: &str) {

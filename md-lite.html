@@ -197,7 +197,7 @@ footer.status .spacer{flex-shrink:1}
       <select data-set="openMode"><option value="read">Aperçu</option><option value="split">Texte + aperçu</option><option value="edit">Texte</option><option value="last">Dernier mode utilisé</option></select></label>
     <label>Affichage d'un nouveau document
       <select data-set="newMode"><option value="split">Texte + aperçu</option><option value="edit">Texte</option><option value="read">Aperçu</option></select></label>
-    <label class="nat">Fichier ouvert depuis l'Explorateur
+    <label class="nat"><span id="fromExplorer">Fichier ouvert depuis l'Explorateur</span>
       <select data-set="openIn"><option value="tab">Nouvel onglet</option><option value="window">Nouvelle fenêtre</option></select></label>
     <label class="chk nat"><input type="checkbox" data-set="restoreSession"> Rouvrir les onglets de la dernière session</label>
 
@@ -304,7 +304,15 @@ const $=id=>document.getElementById(id);
 const out=$('out'),view=$('view'),mainEl=$('main');
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 // Dans md-lite.exe, la page est servie par le programme ; sinon c'est le fichier HTML ouvert seul dans un navigateur.
-const NATIVE=location.host==='mdlite.localhost';
+const NATIVE=location.host==='mdlite.localhost'||location.protocol==='mdlite:';
+let OS='windows'; // donné par le programme au démarrage
+// Chemin d'une URL file:// (garde le "/" initial sous Linux, l'enlève devant une lettre de lecteur Windows).
+function filePath(u){
+  const m=u.match(/^file:\/\/(?:localhost)?(\/.*)$/i);if(!m)return null;
+  let p;try{p=decodeURIComponent(m[1])}catch(e){p=m[1]}
+  return /^\/[a-zA-Z]:/.test(p)?p.slice(1):p;
+}
+const samePath=(a,b)=>OS==='windows'?a.toLowerCase()===b.toLowerCase():a===b;
 
 /* ---------- Paramètres ---------- */
 const DEFAULTS={openMode:'read',newMode:'split',openIn:'tab',restoreSession:true,theme:'system',editorSize:14,previewSize:16,readWidth:820,
@@ -578,8 +586,8 @@ function resolveSrc(u){
   u=u.trim();
   if(!NATIVE||!u)return u;
   if(/^[a-zA-Z]:[\\/]/.test(u))return '/abs/'+encodeURIComponent(u.replace(/\\/g,'/'));
-  const f=u.match(/^file:\/\/\/?(.*)$/i);
-  if(f){try{return '/abs/'+encodeURIComponent(decodeURIComponent(f[1]))}catch(e){return u}}
+  const f=filePath(u);
+  if(f)return '/abs/'+encodeURIComponent(f);
   if(/^([a-z][a-z0-9+.-]*:|#|\/\/)/i.test(u))return u;
   return u.startsWith('/')?'/root/'+T.id+u:'/doc/'+T.id+'/'+u;
 }
@@ -831,10 +839,12 @@ out.addEventListener('click',async e=>{
   if(h.startsWith('#')){
     const id=CSS.escape('u-'+decodeURIComponent(h.slice(1)));
     const t=out.querySelector('[id="'+id+'"],[name="'+id+'"]');if(t)t.scrollIntoView();return}
-  const f=h.match(/^file:\/\/\/?(.*)$/i);if(f){try{h=decodeURIComponent(f[1])}catch(_){}}
-  if(/^[a-z][a-z0-9+.-]*:/i.test(h)&&!/^[a-zA-Z]:[\\/]/.test(h)||h.startsWith('//')||!NATIVE){window.open(h,'_blank','noopener');return}
+  // Un chemin absolu (file:// ou C:\...) est marqué "file:" pour ne pas être lu comme relatif à la racine git.
+  const f=filePath(h)||(/^[a-zA-Z]:[\\/]/.test(h)?h:null);
+  if(!f&&(/^[a-z][a-z0-9+.-]*:/i.test(h)||h.startsWith('//'))||!NATIVE){window.open(h,'_blank','noopener');return}
   // Lien local : un .md s'ouvre dans un onglet, le reste avec son application.
-  const q='?doc='+T.id+'&rel='+encodeURIComponent(h);
+  const q='?doc='+T.id+'&rel='+encodeURIComponent(f?'file:'+f:h);
+  if(f)h=f;
   if(isMdPath(h)){
     const r=await fetch('/api/resolve'+q);
     if(r.ok)openPath(await r.text());else alert('Fichier introuvable : '+h);
@@ -854,7 +864,7 @@ const openMode=()=>S.openMode==='last'?S.lastMode:S.openMode;
 
 // Ouvre un fichier dans un onglet (ou bascule sur l'onglet qui l'affiche déjà).
 async function openPath(p,quiet){
-  const same=tabs.find(t=>t.fpath&&t.fpath.toLowerCase()===p.toLowerCase());
+  const same=tabs.find(t=>t.fpath&&samePath(t.fpath,p));
   if(same){activate(same);return}
   if(!isMdPath(p)&&!quiet&&!confirm('Ouvrir « '+p.split(/[\\/]/).pop()+' » comme texte ?'))return;
   const reuse=T&&!T.fpath&&!T.dirty&&!T.ta.value.trim()?T:null;
@@ -1183,6 +1193,8 @@ view.addEventListener('scroll',()=>sync(view,ta));
   if(NATIVE){
     try{
       const st=await (await fetch('/api/startup')).json();
+      OS=st.os||OS;
+      if(OS!=='windows')$('fromExplorer').textContent='Fichier ouvert depuis le gestionnaire de fichiers';
       let files=st.files,active=-1,quiet=false;
       if(!files.length&&!st.fresh&&S.restoreSession){
         try{const s=JSON.parse(await (await fetch('/api/store?key=session')).text());files=s.files||[];active=s.active;quiet=true}catch(e){}
