@@ -154,6 +154,11 @@ fn run(files: Vec<PathBuf>, fresh: bool) {
             open_url(&url);
             false
         });
+    // Tests automatiques (CI) : MDLITE_SELFTEST désigne un script injecté dans la page.
+    let builder = match selftest_dir().and_then(|d| fs::read_to_string(d.join("selftest.js")).ok()) {
+        Some(js) => builder.with_initialization_script_for_main_only(js, true),
+        None => builder,
+    };
     let webview = match platform::build_webview(builder, &window) {
         Ok(w) => w,
         Err(e) => {
@@ -374,8 +379,22 @@ fn route(req: Request<Vec<u8>>, c: &Ctx) -> io::Result<Res> {
             platform::make_default(c.win)?;
             Ok(text(200, if platform::is_default() { "1" } else { "0" }))
         }
+        // Le script de test signale chaque étape par un fichier ; « done » termine le programme.
+        "/api/selftest" => {
+            let Some(dir) = selftest_dir() else { return Ok(empty(404)) };
+            let step = q("step").filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or_default();
+            fs::write(dir.join(format!("{step}.out")), body())?;
+            if step == "done" {
+                std::process::exit(if q("ok").as_deref() == Some("1") { 0 } else { 1 });
+            }
+            Ok(empty(204))
+        }
         _ => Ok(empty(404)),
     }
+}
+
+fn selftest_dir() -> Option<PathBuf> {
+    std::env::var_os("MDLITE_SELFTEST").map(PathBuf::from)
 }
 
 fn page(nonce: &str) -> Res {
