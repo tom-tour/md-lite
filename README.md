@@ -1,9 +1,15 @@
+<img src="icons/icon.png" width="64" alt="" align="right">
+
 # MD Lite
 
+[![Download for Windows](https://img.shields.io/badge/Download-Windows%20(.exe)-0969DA?logo=windows&logoColor=white)](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe)
+[![Latest release](https://img.shields.io/github/v/release/tom-tour/md-lite)](https://github.com/tom-tour/md-lite/releases/latest)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/tom_t)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](LICENSE)
 
 A very light Markdown reader and editor for Windows. Double-click a `.md` file and it opens: rendered preview, raw text, or both side by side.
+
+**[⬇ Download md-lite.exe](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe)** (latest version, under 1 MB, no installation)
 
 *[Version française plus bas](#français)*
 
@@ -22,11 +28,13 @@ A very light Markdown reader and editor for Windows. Double-click a `.md` file a
 
 ## Installation
 
-1. Download `md-lite.exe` (or build it, see below) and put it in a folder of your choice.
-2. Run it once. A banner offers to make MD Lite the default app for `.md` files: click **Set as default**, then pick MD Lite in the Windows dialog.
+1. [Download `md-lite.exe`](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe) (or build it, see below) and put it in a folder of your choice.
+2. Run it once. A banner offers to make MD Lite the default app for `.md` files: click **Définir par défaut** (set as default), then pick MD Lite in the Windows dialog.
    You can also run `md-lite.exe --install` to register it, and `md-lite.exe --uninstall` to remove the registration.
 
 If you move the executable, the file association updates itself the next time you start it.
+
+The executable is not code-signed, so Windows SmartScreen may warn you the first time: click **More info**, then **Run anyway**. The interface is in French for now.
 
 ## Keyboard shortcuts
 
@@ -67,6 +75,8 @@ If MD Lite is useful to you, you can support its development on [Ko-fi](https://
 
 Un lecteur et éditeur Markdown très léger pour Windows. Double-clique sur un fichier `.md` et il s'ouvre : aperçu mis en forme, texte brut, ou les deux côte à côte.
 
+**[⬇ Télécharger md-lite.exe](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe)** (dernière version, moins de 1 Mo, sans installation)
+
 ### Fonctionnalités
 
 - **Trois vues** : texte brut, texte + aperçu, aperçu seul. Les fichiers s'ouvrent en aperçu par défaut (réglable).
@@ -82,11 +92,13 @@ Un lecteur et éditeur Markdown très léger pour Windows. Double-clique sur un 
 
 ### Installation
 
-1. Télécharge `md-lite.exe` (ou compile-le, voir plus bas) et place-le dans le dossier de ton choix.
+1. [Télécharge `md-lite.exe`](https://github.com/tom-tour/md-lite/releases/latest/download/md-lite.exe) (ou compile-le, voir plus bas) et place-le dans le dossier de ton choix.
 2. Lance-le une fois. Un bandeau propose d'en faire l'application par défaut pour les `.md` : clique sur **Définir par défaut**, puis choisis MD Lite dans la fenêtre de Windows.
    Tu peux aussi lancer `md-lite.exe --install` pour l'enregistrer, et `md-lite.exe --uninstall` pour retirer l'enregistrement.
 
 Si tu déplaces l'exécutable, l'association se met à jour toute seule au lancement suivant.
+
+L'exécutable n'est pas signé numériquement : au premier lancement, Windows SmartScreen peut afficher un avertissement. Clique sur **Informations complémentaires**, puis **Exécuter quand même**.
 
 ### Raccourcis
 
