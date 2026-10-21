@@ -1,6 +1,6 @@
 [package]
 name = "md-lite"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2021"
 description = "Lecteur et éditeur Markdown léger pour Windows et Linux"
 license = "GPL-3.0-or-later"
