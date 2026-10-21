@@ -42,7 +42,7 @@ wait_for dark || fail "étape thème sombre"
 sleep 1; shot 4-sombre
 
 wait_for result || fail "résultat"
-cat "$MDLITE_SELFTEST/result.out"
+cat "$MDLITE_SELFTEST/result.out"; echo
 for _ in $(seq 100); do kill -0 "$PID" 2>/dev/null || break; sleep 0.1; done
 kill -0 "$PID" 2>/dev/null && fail "la fenêtre ne s'est pas fermée"
 wait "$PID"; CODE=$?
